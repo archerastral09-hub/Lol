@@ -1,0 +1,56 @@
+name: Extraire les équipes L'Adresse
+
+on:
+  workflow_dispatch:
+    inputs:
+      delai:
+        description: "Pause entre deux fiches (secondes)"
+        default: "1.0"
+      limite:
+        description: "Nombre max d'agences (0 = toutes)"
+        default: "0"
+      refaire:
+        description: "Repartir de zéro (vider la feuille Contacts)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: extraire-equipes
+  cancel-in-progress: false
+
+jobs:
+  extraire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer les dépendances
+        run: pip install requests beautifulsoup4 openpyxl
+
+      - name: Extraire les équipes
+        run: |
+          ARGS="--fichier agences_ladresse.xlsx --delai ${{ inputs.delai }} --limite ${{ inputs.limite }}"
+          if [ "${{ inputs.refaire }}" = "true" ]; then ARGS="$ARGS --refaire"; fi
+          python -u extraire_equipes.py $ARGS 2>&1 | tee rapport_equipes.txt
+
+      - name: Sauvegarder les résultats (même en cas d'échec)
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add agences_ladresse.xlsx rapport_equipes.txt
+          if git diff --cached --quiet; then
+            echo "Rien à commiter"
+          else
+            git commit -m "Contacts : équipes des agences L'Adresse"
+            git pull --rebase
+            git push
+          fi
